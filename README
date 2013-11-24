@@ -1,0 +1,43 @@
+
+This directory contains the simple hyperk event display program "hyperk_esd".
+You need to have a WCSim output file on which to run the program.
+
+The program needs to know the whereabouts of a ROOT installation and a WCSim
+installation. To run it first do
+
+source ../hk-hyperk/Source_At_Start_T2HK.sh
+
+to set all the needed environment variables.
+Then:
+
+root -x hyperk_display.C
+
+A ROOT file open dialog box will appear. Navigate to a file containing WCSim
+output.
+
+An Eve Window should appear containing two large tabs on the right hand side and
+two small ones on the left hand side.
+
+The two left hand side ones are:
+---------------------------------
+
+Eve  - the standard Eve controls
+Event Control - containing forward and backward arrows for event navigation
+
+
+The two right hand side ones are:
+---------------------------------
+
+Viewer 1 - A 3D event display showing truth tracks and cherenkov hits against a 
+          background geometry which contains all phototubes.
+Summary  - A brief summary of the truth information found in the event.
+
+
+Next steps 
+---------- 
+- Simplified geometry for slower displays e.g. laptops 
+- Add an event display for fiTQun.  
+- More features can be added upon request. If you make changes to the
+code please pass them back to Alex Finch for inclusion in future versions.
+
+Author: Alex Finch (A.Finch@lancaster.ac.uk) 30/10/2013
