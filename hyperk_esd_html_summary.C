@@ -1,87 +1,32 @@
-// @(#)root/eve:$Id$
 
-// Html table and event summary for hyperk_esd.C
-
+#include "hyperk_esd_html_summary.h"
+#include "WCSimRootEvent.hh"
 //==============================================================================
-
-class HtmlObjTable : public TObject
-{
-public:                     // make them public for shorter code
-	
-	TString   fName;
-	Int_t     fNValues;      // number of values
-	Int_t     fNFields;      // number of fields
-	TArrayF  *fValues;
-	TString  fRowNames[100];
-	TString  *fLabels;
-	Bool_t    fExpand;
-	
-	TString   fHtml;         // HTML output code
-	
-	void Build();
-	void BuildTitle();
-	void BuildLabels();
-	void BuildTable();
-	
-public:
-	HtmlObjTable(const char *name, Int_t nfields, Int_t nvals, Bool_t exp=kTRUE);
-	virtual ~HtmlObjTable();
-	
-	void     SetLabel(Int_t col, const char *label) { fLabels[col] = label; }
-	void     SetValue(Int_t col, Int_t row, Float_t val) { fValues[col].SetAt(val, row); }
-	void     SetRowName(Int_t row, TString val) { fRowNames[row]=val ;}
-	TString  Html() const { return fHtml; }
-	
-	ClassDef(HtmlObjTable, 0);
-};
-
-//==============================================================================
-
-class HtmlSummary
-{
-public:                           // make them public for shorter code
-	Int_t           fNTables;
-	TOrdCollection *fObjTables;    // ->array of object tables
-	TString         fHtml;         // output HTML string
-	TString         fTitle;        // page title
-	TString         fHeader;       // HTML header
-	TString         fFooter;       // HTML footer
-	
-	void     MakeHeader();
-	void     MakeFooter();
-	
-public:
-	HtmlSummary(const char *title);
-	virtual ~HtmlSummary();
-	
-	HtmlObjTable  *AddTable(const char *name, Int_t nfields, Int_t nvals, 
-		Bool_t exp=kTRUE, Option_t *opt="");
-	HtmlObjTable  *GetTable(Int_t at) const { return (HtmlObjTable *)fObjTables->At(at); }
-	void           Build();
-	void           Clear(Option_t *option="");
-	void           Reset(Option_t *option="");
-	TString        Html() const { return fHtml; }
-	
-	ClassDef(HtmlSummary, 0);
-};
-
-//==============================================================================
-
-HtmlSummary *fgHtmlSummary = 0;
-TGHtml      *fgHtml        = 0;
 
 //==============================================================================
 
 //______________________________________________________________________________
-HtmlObjTable::HtmlObjTable(const char *name, Int_t nfields, Int_t nvals, Bool_t exp) : 
-fName(name), fNValues(nvals), fNFields(nfields), fExpand(exp)
+HtmlObjTable::HtmlObjTable(const char *name, Int_t nfields,  Bool_t exp) : 
+fName(name),  fNFields(nfields), fExpand(exp)
 {
 	// Constructor.
-	
+	fNValues=0;
 	fValues = new TArrayF[fNFields];
-	for (int i=0;i<fNFields;i++)
-		fValues[i].Set(nvals);
+	fIsInt  = new bool[fNFields];
+	for (int ix=0;ix<fNFields;ix++)
+	{
+		//fValues[ix].Set(nvals);
+                fIsInt[ix]=kFALSE;
+	}
 	fLabels = new TString[fNFields];
+}
+void     HtmlObjTable::SetValue(Int_t col, Int_t row, Float_t val) 
+{
+	if(row+1>fNValues)
+	{
+        	fValues[col].Set(row+1);
+        }
+	fValues[col].SetAt(val, row); 
 }
 
 //______________________________________________________________________________
@@ -90,6 +35,7 @@ HtmlObjTable::~HtmlObjTable()
 	// Destructor.
 	
 	delete [] fValues;
+	delete [] fIsInt;
 	delete [] fLabels;
 }
 
@@ -151,7 +97,7 @@ void HtmlObjTable::BuildTable()
 {
 	// Build part of table with values.
 	
-	for (int i = 0; i < fNValues; i++) {
+	for (int i = 0; i < (fNValues+1); i++) {
 		if (i%2)
 			fHtml += "<tr bgcolor=e0e0ff>";
 		else
@@ -172,7 +118,10 @@ void HtmlObjTable::BuildTable()
 			fHtml += Form("%d%%", 100/fNFields);
 			fHtml += " align=\"center\"";
 			fHtml += ">";
-			fHtml += Form("%1.2f", fValues[j][i]);
+			if(fIsInt[j])
+				fHtml += Form("%2i", (int)fValues[j][i]);
+			else
+				fHtml += Form("%1.2f", fValues[j][i]);
 			fHtml += "</td>";
 		}
 		fHtml += "</tr> ";
@@ -196,14 +145,14 @@ HtmlSummary::~HtmlSummary()
 }
 
 //______________________________________________________________________________
-HtmlObjTable *HtmlSummary::AddTable(const char *name, Int_t nfields, Int_t nvals,
+HtmlObjTable *HtmlSummary::AddTable(const char *name, Int_t nfields, 
 	Bool_t exp, Option_t *option)
 {
 	// Add a new table in our list of tables.
 	
 	TString opt = option;
 	opt.ToLower();
-	HtmlObjTable *table = new HtmlObjTable(name, nfields, nvals, exp);
+	HtmlObjTable *table = new HtmlObjTable(name, nfields, exp);
 	fNTables++;
 	if (opt.Contains("first"))
 		fObjTables->AddFirst(table);
@@ -275,68 +224,4 @@ void HtmlSummary::MakeFooter()
 
 //==============================================================================
 
-//______________________________________________________________________________
-void update_html_summary(WCSimRootTrigger * wcsimrootTrigger)
-{
-	// Update summary of current event.
-	
 
-	int ntrack = wcsimrootTrigger->GetNtrack();
-	
-	HtmlObjTable *table;
-	fgHtmlSummary->Clear("D");
-	table = fgHtmlSummary->AddTable("Tracks", 13, ntrack,kTRUE,"first"); 
-	table->SetLabel(0, "Type");
-	table->SetLabel(1, "Start X");
-	table->SetLabel(2, "Start Y");
-	table->SetLabel(3, "Start Z");
-	table->SetLabel(4, "Stop X");	
-	table->SetLabel(5, "Stop Y");	
-	table->SetLabel(6, "Stop Z");	
-	table->SetLabel(7, "Mass ");	
-	table->SetLabel(8, "Momentum ");	
-	table->SetLabel(9, "Energy ");	
-	table->SetLabel(10, "Pdir X");	
-	table->SetLabel(11, "Pdir Y");	
-	table->SetLabel(12, "Pdir Z");	
-	int i;
-	// Loop through elements in the TClonesArray of WCSimTracks
-	for (i=0; i<ntrack; i++)
-	{
-		TObject *element = (wcsimrootTrigger->GetTracks())->At(i);
-		
-		WCSimRootTrack *wcsimroottrack = dynamic_cast<WCSimRootTrack*>(element);
-				int pdgCode=wcsimroottrack->GetIpnu();
-		TString Name(Form(" #%d (%d) ",i,pdgCode));
-
-		if(pdgCode==11)Name+="electron";
-		if(pdgCode==-11)Name+="positron";
-		if(pdgCode==12)Name+="electron neutrino";
-		if(pdgCode==-12)Name+="electron anti-neutrino";
-		if(pdgCode==13)Name+="muon";
-		if(pdgCode==-13)Name+="anti-muon";
-		if(pdgCode==14)Name+="muon neutrino";
-		if(pdgCode==-14)Name+="muon anti-neutrino";
-		if(pdgCode==2212)Name+="proton";
-		if(pdgCode==-2212)Name+="anti-proton";
-		
-		table->SetRowName(i, Name);
-		for(int l=0;l<3;l++){
-			table->SetValue(l+1,i,wcsimroottrack->GetStart(l));
-			table->SetValue(l+4,i,wcsimroottrack->GetStop(l));
-		}
-		Int_t     GetIpnu() const { return fIpnu;}
-		
-		table->SetValue(7,i,wcsimroottrack->GetM());
-		table->SetValue(8,i,wcsimroottrack->GetP());
-		table->SetValue(9,i,wcsimroottrack->GetE());
-		for(int l=0;l<3;l++)
-			table->SetValue(10+l,i,wcsimroottrack->GetPdir(l));
-
-	}  // End of loop over tracks
-	//	
-	fgHtmlSummary->Build();
-	fgHtml->Clear();
-	fgHtml->ParseText((char*)fgHtmlSummary->Html().Data());
-	fgHtml->Layout();
-}
