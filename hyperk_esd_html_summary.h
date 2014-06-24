@@ -57,6 +57,7 @@ public:                           // make them public for shorter code
 	
 	void     MakeHeader();
 	void     MakeFooter();
+	void     SetTitle(TString t){fTitle=t;}
 	
 public:
 	HtmlSummary(const char *title);

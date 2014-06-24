@@ -70,7 +70,7 @@ void HtmlObjTable::BuildTitle()
 	fHtml += "<td>";
 	fHtml += "<td align=right> ";
 	fHtml += "<font face=Verdana size=3 color=ffffff><b><i>";
-	fHtml += Form("Size = %d", fNValues);
+	//fHtml += Form("Size = %d", fNValues);
 	fHtml += "</i></b></font></td></tr>";
 	fHtml += "</table>";
 	fHtml += "</td></tr>";

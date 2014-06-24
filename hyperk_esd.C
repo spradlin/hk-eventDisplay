@@ -15,22 +15,22 @@ TEveScene*  UnrolledScene;
 TEveScene*  flatGeometryScene;
 TEveViewer* UnrolledView;
 
-bool FITQUN;
-bool fAccumulateEvents;
+bool FITQUN,fAccumulateEvents,fDigitIsTime;
 
 void       make_gui();
 void       load_event();
 void       createGeometry(bool flatTube=kFALSE);
-void       wcsim_load_event();
+void       wcsim_load_event(int iTrigger);
 void       fitqun_load_event(int entry);
 void       UnrollView(double* pmtX ,double* pmtY,double* pmtZ,int location,float maxY,float maxZ);
 TEveViewer* New2dView(TString name,TGLViewer::ECameraType type, TEveScene* scene);
-void update_html_summary(WCSimRootTrigger * wcsimrootTrigger,bool firstTrackIsNeutrino,bool secondTrackIsTarget);
+void update_html_summary(int iTrigger,WCSimRootTrigger * wcsimrootTrigger,bool firstTrackIsNeutrino,bool secondTrackIsTarget);
 
 
 bool fSimpleGeometry;
 TGTextButton *fGeometrySwitchButton ;
 TGCheckButton *fAccumulateEventsBox;
+TGCheckButton *fColourIsTimeBox;
 Int_t event_id       = 0; // Current event id.
 
 TEveTrackList *gTrackList = 0;
@@ -118,6 +118,7 @@ void hyperk_esd()
     	TEveManager::Create(kTRUE,"V");
     	gEve->GetBrowser()->SetTabTitle("3D View",TRootBrowser::kRight,0);
     	gEve->GetDefaultViewer()->SetName("3D View");
+    	gEve->GetDefaultViewer()->GetGLViewer()->SetResetCamerasOnUpdate(kFALSE);
     	
     	fPicker= new Picker();
     	gEve->GetDefaultGLViewer()->Connect("Clicked(TObject*)", "Picker", fPicker, 
@@ -162,7 +163,7 @@ void hyperk_esd()
     	TEveSceneInfo* gSI= (TEveSceneInfo*) (UnrolledView->FindChild("SI - Geometry scene"));
     	if(gSI!=NULL)gSI->Delete();
     	UnrolledView->GetGLViewer()->Connect("Clicked(TObject*)", "Picker", fPicker,"Picked(TObject*)");
-
+    	
     	
     	/*
     	Initialise FitQun
@@ -201,7 +202,7 @@ void load_event()
 	// Load event specified in global event_id.
 	// The contents of previous event are removed.
 	
-	printf("Loading event %d.\n", event_id);
+	//printf("Loading event %d.\n", event_id);
 	
 	gEve->GetViewers()->DeleteAnnotations();
 	TEveEventManager* CurrentEvent =gEve->GetCurrentEvent();
@@ -211,13 +212,17 @@ void load_event()
 	}
 	
 	wcsimT->GetEvent(event_id);	
-	wcsimrootTrigger = wcsimrootEvent->GetTrigger(0); 
-	bool firstTrackIsNeutrino,secondTrackIsTarget;
-	wcsim_load_event(firstTrackIsNeutrino,secondTrackIsTarget);
-	if(FITQUN)fitqun_load_event(event_id);
 	fgHtmlSummary->Clear("D");
-	update_html_summary(wcsimrootTrigger,firstTrackIsNeutrino,secondTrackIsTarget);
-	if(FITQUN)fiTQun.CreateTable(event_id, fgHtmlSummary);
+	for(int iTrigger=0;iTrigger<wcsimrootEvent->GetNumberOfEvents();iTrigger++)
+	{
+		wcsimrootTrigger = wcsimrootEvent->GetTrigger(iTrigger); 
+		bool firstTrackIsNeutrino,secondTrackIsTarget;
+		wcsim_load_event(iTrigger,firstTrackIsNeutrino,secondTrackIsTarget);
+		update_html_summary(iTrigger,wcsimrootTrigger,firstTrackIsNeutrino,secondTrackIsTarget);
+	}
+	if(FITQUN)fitqun_load_event(event_id);
+	if(FITQUN)fiTQun.CreateTable( fgHtmlSummary);
+	fgHtmlSummary->SetTitle(Form("HyperK Event Display Summary, for entry %i",event_id));
 	fgHtmlSummary->Build();
 	fgHtml->Clear();
 	fgHtml->ParseText((char*)fgHtmlSummary->Html().Data());
@@ -260,6 +265,36 @@ public:
 	{
 		
 		fAccumulateEvents=s;
+	}
+	void ColourIsTimeBoxChanged(Bool_t s)
+	{
+		
+		fDigitIsTime=s;
+		for(int iTrigger=0;iTrigger<wcsimrootEvent->GetNumberOfEvents();iTrigger++)
+		{
+			if(iTrigger==0)cout<<" main event "<<endl;
+			if(iTrigger>0)cout<<" delayed sub Event "<<iTrigger<<endl;
+			wcsimrootTrigger = wcsimrootEvent->GetTrigger(iTrigger); 
+			reload_wcsim_hits(iTrigger);
+		}
+		gEve->GetDefaultGLViewer()->UpdateScene();
+		UnrolledView->GetGLViewer()->UpdateScene();
+		
+		
+	}
+	void reload_wcsim_hits(int iTrigger)
+	{
+		
+		TEveEventManager* CurrentEvent =gEve->GetCurrentEvent();
+		if(CurrentEvent != 0){
+			TEveElement*  CherenkovHits=CurrentEvent->FindChild(Form("Cherenkov Hits subevent %i",iTrigger));
+			if(CherenkovHits !=NULL)CurrentEvent->RemoveElement(CherenkovHits);
+		}
+		if(UnrolledScene != 0){
+			TEveElement*  CherenkovHits=UnrolledScene->FindChild(Form("CherenkovHits (Unrolled version) %i",iTrigger));
+			if(CherenkovHits!=NULL)UnrolledScene->RemoveElement(CherenkovHits);
+		}
+		wcsim_load_cherenkov(iTrigger);
 	}
 	void SwitchGeometry()
 	{
@@ -370,6 +405,24 @@ void make_gui()
 		}
 		Group->AddFrame(hf);
 		fCanvasWindow->AddFrame(Group);
+		/*
+		Control to toggle event colour is time
+		*/
+		fDigitIsTime=kFALSE; 
+		Group = new TGGroupFrame(fCanvasWindow->GetContainer(),"Colour for Digits");
+		hf = new TGHorizontalFrame(Group);
+		{
+			
+			fColourIsTimeBox = new TGCheckButton(hf, "Digit Colour is Time.",1);
+			fColourIsTimeBox->SetState(kButtonUp);
+			fColourIsTimeBox->SetToolTipText("If this is checked, digit colour represents time, otherwise it is charge.");
+			fColourIsTimeBox->Connect("Toggled(Bool_t)", "EvNavHandler", fh, "ColourIsTimeBoxChanged(Bool_t)");
+			
+			
+			hf->AddFrame(fColourIsTimeBox);
+		}
+		Group->AddFrame(hf);
+		fCanvasWindow->AddFrame(Group);
 	}
 	
 	
@@ -387,31 +440,69 @@ void make_gui()
 //______________________________________________________________________________
 void fitqun_load_event(int entry)
 {
-    	fiTQun.Process(entry);	
+	fiTQun.Process(entry);	
 }
-void wcsim_load_event(bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
+void wcsim_load_event(int iTrigger,bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
 {
+	wcsim_load_cherenkov(iTrigger);
+	
+	
+	wcsim_load_truth_tracks(iTrigger,firstTrackIsNeutrino,secondTrackIsTarget);
+	
+}
+/*
+Loop over cherenkov digits and add them to Eve
+*/
+wcsim_load_cherenkov(int iTrigger){
 	/*
 	Loop over all cherenkov hits and add them to Eve event
 	*/
 	gStyle->SetPalette(1, 0);
 	
-	TEveRGBAPalette* pal = new TEveRGBAPalette(0, 10);
+	TEveRGBAPalette* pal = new TEveRGBAPalette(0, 30);
 	
 	
-	TEveBoxSet*  CherenkovHits= new TEveBoxSet("CherenkovHits");
+	TEveBoxSet*  CherenkovHits= new TEveBoxSet(Form("Cherenkov Hits subevent %i",iTrigger));
 	CherenkovHits->SetPalette(pal);
+	pal->SetFixColorRange(kTRUE);
+	pal->SetOverflowAction( TEveRGBAPalette::kLA_Clip);
 	CherenkovHits->Reset(TEveBoxSet::kBT_Cone, kFALSE, 64);
-	TEveBoxSet*  CherenkovHits2= new TEveBoxSet("CherenkovHits (Unrolled version)");
+	TEveBoxSet*  CherenkovHits2= new TEveBoxSet(Form("CherenkovHits (Unrolled version) %i",iTrigger));
 	CherenkovHits2->SetPalette(pal);
 	CherenkovHits2->Reset(TEveBoxSet::kBT_Cone, kFALSE, 64);
 	
 	float PMTRadius = wcsimrootgeom->GetWCPMTRadius() ;
 	int max=wcsimrootTrigger->GetNcherenkovdigihits();
+	float maxCharge=0;
+	float minT=1e10;
+	float maxT=-1e10;
+	for (int i = 0; i<max; i++){
+		WCSimRootCherenkovDigiHit *cDigiHit = (WCSimRootCherenkovDigiHit*) wcsimrootTrigger->GetCherenkovDigiHits()->At(i);
+		float Q=cDigiHit->GetQ(); 
+		float Time=cDigiHit->GetT(); 
+		maxCharge=TMath::Max(Q,maxCharge);
+		minT = TMath::Min(minT,Time);
+		maxT = TMath::Max(maxT,Time);
+	}
+	if(fDigitIsTime)
+	{
+		pal->SetLimits(minT,maxT);
+		pal->SetMin(minT);
+		pal->SetMax(maxT);
+	}
+	else
+	{
+		pal->SetLimits(0,maxCharge);
+		pal->SetMin(0);
+		pal->SetMax(maxCharge);
+	}	
+	//cout<<" Cherenkov digits, larges  charge seen is "<<maxCharge;
+	//cout<<". Times run from "<<minT<<" to "<<maxT<<endl;
 	for (int i = 0; i<max; i++){
 		WCSimRootCherenkovDigiHit *cDigiHit = (WCSimRootCherenkovDigiHit*) wcsimrootTrigger->GetCherenkovDigiHits()->At(i);
 		int tubeId=cDigiHit->GetTubeId();
 		float Q=cDigiHit->GetQ(); 
+		float Time=cDigiHit->GetT(); 
 		WCSimRootPMT pmt = wcsimrootgeom -> GetPMT ( tubeId );
 		double pmtX = pmt.GetPosition (0);
 		double pmtY = pmt.GetPosition (1);
@@ -435,9 +526,18 @@ void wcsim_load_event(bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
 			CherenkovHits2->AddCone(TEveVector(pmtX2,pmtY2,pmtZ2),TEveVector(0.0,0.0,1.0) ,PMTRadius ); 
 			CherenkovHits->AddCone(TEveVector(pmtX,pmtY,pmtZ),TEveVector(0.0,0.0,1.0) ,PMTRadius ); 
 		}
-		CherenkovHits2->DigitValue(Q);
-		CherenkovHits->DigitValue(Q);
+		if(fDigitIsTime)
+		{
+			CherenkovHits2->DigitValue(Time);
+			CherenkovHits->DigitValue(Time);
+		}
+		else
+		{
+			CherenkovHits2->DigitValue(Q);
+			CherenkovHits->DigitValue(Q);
+		}
 	}
+	
 	CherenkovHits->RefitPlex();
 	CherenkovHits2->RefitPlex();
 	
@@ -445,11 +545,12 @@ void wcsim_load_event(bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
 	t.SetPos(0.0,0.0,0.0);
 	gEve->AddElement(CherenkovHits);
 	UnrolledScene->AddElement(CherenkovHits2);
-	
-	/*
-	Loop over truth tracks and add them to Eve
-	*/
-	
+}
+/*
+Loop over truth tracks and add them to Eve
+*/
+wcsim_load_truth_tracks(int iTrigger,bool &firstTrackIsNeutrino,bool &secondTrackIsTarget)
+{
 	// Get the number of tracks
 	int ntrack = wcsimrootTrigger->GetNtrack();
 	//printf("ntracks=%d\n",ntrack);
@@ -458,37 +559,38 @@ void wcsim_load_event(bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
 		
 		int npar = wcsimrootTrigger->GetNpar();
 		int i;
-		firstTrackIsNeutrino=kFALSE;
-		secondTrackIsTarget=kFALSE;
-		// Take a first look and decide if we have a neutrino interaction.
-		// If so the neutrino and target will need their start position
-		// adjusting.
-		
-		TObject *element = (wcsimrootTrigger->GetTracks())->At(0);
-		WCSimRootTrack *wcsimroottrack = dynamic_cast<WCSimRootTrack*>(element);
-		int pdgCode=wcsimroottrack->GetIpnu();
-		if(abs(pdgCode)==12 || abs(pdgCode==14))
-			firstTrackIsNeutrino=kTRUE;
-		if(ntrack>1)
-		{
-			TObject *element = (wcsimrootTrigger->GetTracks())->At(1);
+		if(iTrigger==0){
+			firstTrackIsNeutrino=kFALSE;
+			secondTrackIsTarget=kFALSE;
+			// Take a first look and decide if we have a neutrino interaction.
+			// If so the neutrino and target will need their start position
+			// adjusting.
+			
+			TObject *element = (wcsimrootTrigger->GetTracks())->At(0);
 			WCSimRootTrack *wcsimroottrack = dynamic_cast<WCSimRootTrack*>(element);
 			int pdgCode=wcsimroottrack->GetIpnu();
-			if(abs(pdgCode)==2212 
-				&& wcsimroottrack->GetStart(0)==0.0
-			&& wcsimroottrack->GetStart(1)==0.0
-			&& wcsimroottrack->GetStart(2)==0.0
-			)secondTrackIsTarget=kTRUE;
+			if(abs(pdgCode)==12 || abs(pdgCode==14))
+				firstTrackIsNeutrino=kTRUE;
+			if(ntrack>1)
+			{
+				TObject *element = (wcsimrootTrigger->GetTracks())->At(1);
+				WCSimRootTrack *wcsimroottrack = dynamic_cast<WCSimRootTrack*>(element);
+				int pdgCode=wcsimroottrack->GetIpnu();
+				if(abs(pdgCode)==2212 
+					&& wcsimroottrack->GetStart(0)==0.0
+				&& wcsimroottrack->GetStart(1)==0.0
+				&& wcsimroottrack->GetStart(2)==0.0
+				)secondTrackIsTarget=kTRUE;
+			}
 		}
-		
 		// Loop through elements in the TClonesArray of WCSimTracks
-		TEveElementList* TrueTracks = new TEveElementList("Truth Tracks");
+		TEveElementList* TrueTracks = new TEveElementList(Form("Truth Tracks subevent %i",iTrigger));
 		for (i=0; i<ntrack; i++)
 		{
 			TObject *element = (wcsimrootTrigger->GetTracks())->At(i);
 			
 			WCSimRootTrack *wcsimroottrack = dynamic_cast<WCSimRootTrack*>(element);
-			pdgCode=wcsimroottrack->GetIpnu();
+			int pdgCode=wcsimroottrack->GetIpnu();
 			if(pdgCode==0)continue;
 			TString Name("Truth ");
 			if(pdgCode==11)Name+="electron";
@@ -502,8 +604,11 @@ void wcsim_load_event(bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
 			if(pdgCode==2212)Name+="proton";
 			if(pdgCode==-2212)Name+="anti-proton";
 			if(pdgCode==22)Name+="photon";
-			if(i==1 && secondTrackIsTarget) Name+=" (target) ";
-			if(i==0 && firstTrackIsNeutrino) Name+=" (beam) ";
+			if(iTrigger==0)
+			{
+				if(i==1 && secondTrackIsTarget) Name+=" (target) ";
+				if(i==0 && firstTrackIsNeutrino) Name+=" (beam) ";
+			}
 			THKMCTrack* track=new THKMCTrack(Name);
 			float Start[3];
 			float Stop[3];
@@ -529,7 +634,7 @@ void wcsim_load_event(bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
 			/*
 			Implement fix for neutrino and target start positions
 			*/
-			if(i==0 && firstTrackIsNeutrino)
+			if(i==0 && firstTrackIsNeutrino && iTrigger == 0)
 			{
 				track->SetNextPoint(wcsimroottrack->GetStop(0),wcsimroottrack->GetStop(1),maxZ*-1.1);
 				Start[0]=wcsimroottrack->GetStop(0);
@@ -538,7 +643,7 @@ void wcsim_load_event(bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
 			}
 			else
 			{
-				if(i==1 && secondTrackIsTarget)
+				if(i==1 && secondTrackIsTarget && iTrigger == 0 )
 				{
 					track->SetNextPoint(wcsimroottrack->GetStop(0),wcsimroottrack->GetStop(1),wcsimroottrack->GetStop(2));
 					Start[0]=wcsimroottrack->GetStop(0);
@@ -575,31 +680,29 @@ void wcsim_load_event(bool &firstTrackIsNeutrino,bool &secondTrackIsTarget )
 		//Hists->Update();
 	}
 	
-	
-}
-
+}	
 void createGeometry(bool flatTube)
 {
 	/* 
 	Find the maximum values of X,Y,Z 
 	*/
-    	maxX=0;
-    	maxY=0;
-    	maxZ=0;
-    	minZ=0; // I assume z goes negative!
+	maxX=0;
+	maxY=0;
+	maxZ=0;
+	minZ=0; // I assume z goes negative!
 	for(int tubeId=0;tubeId<wcsimrootgeom->GetWCNumPMT();tubeId++)
-    	{
-    		WCSimRootPMT pmt = wcsimrootgeom -> GetPMT ( tubeId );
-    		int location=pmt.GetCylLoc();
-    		if(location !=0 && location !=1 && location !=2)continue;
-    		double pmtX = pmt.GetPosition (0);
-    		double pmtY = pmt.GetPosition (1);
-    		double pmtZ = pmt.GetPosition (2);
-    		if(pmtX>maxX)maxX=pmtX;
-    		if(pmtY>maxY)maxY=pmtY;
-    		if(pmtZ>maxZ)maxZ=pmtZ;   		
-    		if(pmtZ<minZ)minZ=pmtZ;   		
-    	}
+	{
+		WCSimRootPMT pmt = wcsimrootgeom -> GetPMT ( tubeId );
+		int location=pmt.GetCylLoc();
+		if(location !=0 && location !=1 && location !=2)continue;
+		double pmtX = pmt.GetPosition (0);
+		double pmtY = pmt.GetPosition (1);
+		double pmtZ = pmt.GetPosition (2);
+		if(pmtX>maxX)maxX=pmtX;
+		if(pmtY>maxY)maxY=pmtY;
+		if(pmtZ>maxZ)maxZ=pmtZ;   		
+		if(pmtZ<minZ)minZ=pmtZ;   		
+	}
 	cout<<" Maximum values x,y,x "<<maxX<<" "<<maxY<<" "<<maxZ<<endl;
 	// MATERIALS, MIXTURES AND TRACKING MEDIA
 	// Material: world
@@ -613,7 +716,7 @@ void createGeometry(bool flatTube)
 	pMat1->SetTransparency(60);
 	// Medium: medium0
 	Int_t numed   = 0;  // medium number
-        Double_t par[20];
+	Double_t par[20];
 	par[0]  = 0.000000; // isvol
 	par[1]  = 0.000000; // ifield
 	par[2]  = 0.000000; // fieldm
@@ -642,9 +745,9 @@ void createGeometry(bool flatTube)
 	//UnrolledVolume = new TGeoVolume("UnrolledGeometry",pworldbox_1, pMed1);
 	//UnrolledVolume->SetVisLeaves(kTRUE);
 	FlatGeometry = new TEveElementList("Flat Geometry");
-        
-        TEveGeoShape *Shape;
-     	
+	
+	TEveGeoShape *Shape;
+	
 	// SET TOP VOLUME OF GEOMETRY
 	gGeoManager->SetMaxVisNodes(wcsimrootgeom->GetWCNumPMT()+1000);
 	if(flatTube)	
@@ -691,67 +794,67 @@ void createGeometry(bool flatTube)
 	//bool first=true;
 	Double_t theta, phi;
 	double pmtX2=0;
-    	double pmtY2=0;
-    	double pmtZ2=0;
-    	for(int tubeId=0;tubeId<wcsimrootgeom->GetWCNumPMT();tubeId++)
-    	{
-    		WCSimRootPMT pmt = wcsimrootgeom -> GetPMT ( tubeId );
-    		double pmtX = pmt.GetPosition (0);
-    		double pmtY = pmt.GetPosition (1);
-    		double pmtZ = pmt.GetPosition (2);
-    		int location= pmt.GetCylLoc();
-    		
-    		//cout<<" location "<<location<<endl;
-    		//cout<<" x,y,z of phototube          "<<pmtX<<" "<<pmtY<<" "<<pmtZ<<endl;
-    		pmtX2=pmtX;
-    		pmtY2=pmtY;
-    		pmtZ2=pmtZ;
-    		
-    		UnrollView(&pmtX2,&pmtY2,&pmtZ2,location,maxY,maxZ);
-    		//cout<<" x,y,z of Unrolled phototube "<<pmtX<<" "<<pmtY<<" "<<pmtZ<<endl;
-    		
-    		
-    		theta=0.0;
-    		phi=0.0;
-    		float rad2deg=57.3;
-    		if(location==1)
-    		{
-    			float lengthXY=sqrt(pmtX*pmtX+pmtY*pmtY);
-    			float xd=pmtX/lengthXY;
-    			float yd=pmtY/lengthXY;
-    			TVector3 D(xd,yd,0.0);
-    			theta=D.Theta()*rad2deg;
-    			phi=D.Phi()*rad2deg;
-    		}
-    		else
-    		{
-    			theta=0.0;
-    			phi=0.0;
-    			if(location==2)theta=180.0; 
-    		}
-    		//cout<<" tube> "<<tubeId<<endl;
-    		if(location==0 || location ==1 || location ==2){
-    			/* create a fake geometry object out of tevegeoshapes for the rolled out view*/
-    			//cout<<" create translation using "<<pmtX2<<" "<<pmtY2<<" "<<pmtZ2<<endl;
-    			TGeoTranslation PhototubeUnrolledPositionMatrix("ExlodedShift",pmtX2,pmtY2,pmtZ2);
-    			shape = new TEveGeoShape(Form("Phototube %i",tubeId));
-    			shape->SetShape(PhotoTubeShape);
-    			shape->SetTransMatrix(PhototubeUnrolledPositionMatrix);
-    			shape->SetMainColor(kYellow-5);
-    			shape->SetMainTransparency(70);
-    			FlatGeometry->AddElement(shape);
-    			/* now the 'normal' root geometry objects */
-   			TGeoRotation TubeRotation("rotation",phi-90.0,theta,0.0);//D.Phi(),D.Theta,0.0);
-    			TGeoTranslation PhototubePositionMatrix("shift",pmtX,pmtY,pmtZ);
-    			TGeoCombiTrans *ShiftAndTwist = new TGeoCombiTrans(PhototubePositionMatrix,TubeRotation);
-    			SimpleVolume->AddNode(PhotoTubeVolume, tubeId, ShiftAndTwist);
-    			WorldVolume-> AddNode(PhotoSphereVolume, tubeId, ShiftAndTwist);
-    			//		cout<<" added to geometry "<<endl;
-    		}
-    		//	else
-    		//		cout<<" NOT added to geometry, location = "<<location<<endl;
-    		
-    	}
+	double pmtY2=0;
+	double pmtZ2=0;
+	for(int tubeId=0;tubeId<wcsimrootgeom->GetWCNumPMT();tubeId++)
+	{
+		WCSimRootPMT pmt = wcsimrootgeom -> GetPMT ( tubeId );
+		double pmtX = pmt.GetPosition (0);
+		double pmtY = pmt.GetPosition (1);
+		double pmtZ = pmt.GetPosition (2);
+		int location= pmt.GetCylLoc();
+		
+		//cout<<" location "<<location<<endl;
+		//cout<<" x,y,z of phototube          "<<pmtX<<" "<<pmtY<<" "<<pmtZ<<endl;
+		pmtX2=pmtX;
+		pmtY2=pmtY;
+		pmtZ2=pmtZ;
+		
+		UnrollView(&pmtX2,&pmtY2,&pmtZ2,location,maxY,maxZ);
+		//cout<<" x,y,z of Unrolled phototube "<<pmtX<<" "<<pmtY<<" "<<pmtZ<<endl;
+		
+		
+		theta=0.0;
+		phi=0.0;
+		float rad2deg=57.3;
+		if(location==1)
+		{
+			float lengthXY=sqrt(pmtX*pmtX+pmtY*pmtY);
+			float xd=pmtX/lengthXY;
+			float yd=pmtY/lengthXY;
+			TVector3 D(xd,yd,0.0);
+			theta=D.Theta()*rad2deg;
+			phi=D.Phi()*rad2deg;
+		}
+		else
+		{
+			theta=0.0;
+			phi=0.0;
+			if(location==2)theta=180.0; 
+		}
+		//cout<<" tube> "<<tubeId<<endl;
+		if(location==0 || location ==1 || location ==2){
+			/* create a fake geometry object out of tevegeoshapes for the rolled out view*/
+			//cout<<" create translation using "<<pmtX2<<" "<<pmtY2<<" "<<pmtZ2<<endl;
+			TGeoTranslation PhototubeUnrolledPositionMatrix("ExlodedShift",pmtX2,pmtY2,pmtZ2);
+			shape = new TEveGeoShape(Form("Phototube %i",tubeId));
+			shape->SetShape(PhotoTubeShape);
+			shape->SetTransMatrix(PhototubeUnrolledPositionMatrix);
+			shape->SetMainColor(kYellow-5);
+			shape->SetMainTransparency(70);
+			FlatGeometry->AddElement(shape);
+			/* now the 'normal' root geometry objects */
+			TGeoRotation TubeRotation("rotation",phi-90.0,theta,0.0);//D.Phi(),D.Theta,0.0);
+			TGeoTranslation PhototubePositionMatrix("shift",pmtX,pmtY,pmtZ);
+			TGeoCombiTrans *ShiftAndTwist = new TGeoCombiTrans(PhototubePositionMatrix,TubeRotation);
+			SimpleVolume->AddNode(PhotoTubeVolume, tubeId, ShiftAndTwist);
+			WorldVolume-> AddNode(PhotoSphereVolume, tubeId, ShiftAndTwist);
+			//		cout<<" added to geometry "<<endl;
+		}
+		//	else
+		//		cout<<" NOT added to geometry, location = "<<location<<endl;
+		
+	}
 	// CLOSE GEOMETRY
 	gGeoManager->CloseGeometry();
 	//pmtX2=500.0;
@@ -802,10 +905,11 @@ TEveViewer* New2dView(TString name,TGLViewer::ECameraType type, TEveScene* scene
 }
 
 //______________________________________________________________________________
-void update_html_summary(WCSimRootTrigger * wcsimrootTrigger,bool firstTrackIsNeutrino,bool secondTrackIsTarget)
+void update_html_summary(int iTrigger,WCSimRootTrigger * wcsimrootTrigger,bool firstTrackIsNeutrino,bool secondTrackIsTarget)
 {
 	// Update summary of current event.
 	int ntrack = wcsimrootTrigger->GetNtrack();
+	if(ntrack==0)return;
 	int nused=0;
 	/*
 	for (int i=0; i<ntrack; i++)
@@ -821,7 +925,10 @@ void update_html_summary(WCSimRootTrigger * wcsimrootTrigger,bool firstTrackIsNe
 	
 	HtmlObjTable *table;
 	//fgHtmlSummary->Clear("D");
-	table = fgHtmlSummary->AddTable("Truth Tracks", 12,kTRUE,"first"); 
+	if(iTrigger==0)
+		table = fgHtmlSummary->AddTable(Form("Truth Tracks subevent: %i",iTrigger), 12,kTRUE,"first"); 
+	else
+		table = fgHtmlSummary->AddTable(Form("Truth Tracks subevent: %i",iTrigger), 12,kTRUE,"other"); 
 	table->SetLabel(0, "Type");
 	table->SetLabel(1, "Start X");
 	table->SetLabel(2, "Start Y");
@@ -865,13 +972,13 @@ void update_html_summary(WCSimRootTrigger * wcsimrootTrigger,bool firstTrackIsNe
 			table->SetValue(l+1,used,wcsimroottrack->GetStart(l));
 			table->SetValue(l+4,used,wcsimroottrack->GetStop(l));
 		}
-		if(i==0 && firstTrackIsNeutrino)
+		if(i==0 && firstTrackIsNeutrino && iTrigger==0)
 		{
 			table->SetValue(1,used,wcsimroottrack->GetStop(0));
 			table->SetValue(2,used,wcsimroottrack->GetStop(1));
 			table->SetValue(3,used,-1.1*maxZ);
 		}
-		if(i==1 && secondTrackIsTarget)
+		if(i==1 && secondTrackIsTarget && iTrigger==0)
 		{
 			table->SetValue(1,used,wcsimroottrack->GetStop(0));
 			table->SetValue(2,used,wcsimroottrack->GetStop(1));
