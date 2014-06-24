@@ -272,8 +272,8 @@ public:
 		fDigitIsTime=s;
 		for(int iTrigger=0;iTrigger<wcsimrootEvent->GetNumberOfEvents();iTrigger++)
 		{
-			if(iTrigger==0)cout<<" main event "<<endl;
-			if(iTrigger>0)cout<<" delayed sub Event "<<iTrigger<<endl;
+			//if(iTrigger==0)cout<<" main event "<<endl;
+			//if(iTrigger>0)cout<<" delayed sub Event "<<iTrigger<<endl;
 			wcsimrootTrigger = wcsimrootEvent->GetTrigger(iTrigger); 
 			reload_wcsim_hits(iTrigger);
 		}
