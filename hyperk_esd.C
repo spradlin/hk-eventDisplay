@@ -1,6 +1,8 @@
 // Based on alice_esd.C from ROOT tutorials
 // Modified for hyperk by Alex Finch
+#ifdef  FITQUNEXISTS
 fitQunDisplay fiTQun;
+#endif
 WCSimRootGeom * wcsimrootgeom;
 WCSimRootEvent * wcsimrootEvent;
 WCSimRootTrigger * wcsimrootTrigger;
@@ -80,120 +82,131 @@ void hyperk_esd()
 	//	WCSimFile = new TFile("/home/aleph/ajf/hyperk/installationFromGit/hk-WCSim/HyperK_muminus_1000MeV_random_4pi_000.root");
 	gSystem->cd(originalDirectory);
 	fi.fIniDir    = StrDup(CurrentDirectory);
-	
+	#ifdef  FITQUNEXISTS
 	FITQUN=kTRUE;
-	cout<<" Please choose your fiTQun file, cancel if you don't have one "<<endl;
-	new TGFileDialog(gClient->GetRoot(), 0, kFDOpen, &fi);
-	if (!fi.fFilename) {
-		cout<<" No fiTQun file chosen "<<endl;
-		FITQUN=kFALSE;
-	}
 	else
+		FITQUN=kFALSE;
+	#endif
+	if(FITQUN)
 	{
-		cout<<" opening file "<<fi.fFilename<<endl;
-		fiTQunFile = new TFile(fi.fFilename);
-		fiTQunTree=(TTree *) fiTQunFile->Get("fiTQun");
-		fiTQun.Init(fiTQunTree);
+		cout<<" Please choose your fiTQun file, cancel if you don't have one "<<endl;
+		new TGFileDialog(gClient->GetRoot(), 0, kFDOpen, &fi);
+		if (!fi.fFilename) {
+			cout<<" No fiTQun file chosen "<<endl;
+			FITQUN=kFALSE;
+		}
+		else
+		{
+			cout<<" opening file "<<fi.fFilename<<endl;
+			fiTQunFile = new TFile(fi.fFilename);
+			fiTQunTree=(TTree *) fiTQunFile->Get("fiTQun");
+			fiTQun.Init(fiTQunTree);
+		}
 	}
-	
 	// for fast development, hardwire a file and comment out the block above
 	//fiTQunFile = new TFile("/home/aleph/ajf/hyperk/installationFromGit/hk-fitqun/fitqun_HyperK_muminus_1000MeV_random_4pi_000.root");
 	
-        fiTQunTree=(TTree *) fiTQunFile->Get("fiTQun");
-	fiTQun.Init(fiTQunTree);
+	if(FITQUN)
+	{
+		fiTQunTree=(TTree *) fiTQunFile->Get("fiTQun");
+		fiTQun.Init(fiTQunTree);
+	}
 	
 	gSystem->cd(originalDirectory);
 	
 	/*
 	Initialise WCSim
 	*/
-    	wcsimGeoT=(TTree *) WCSimFile->Get("wcsimGeoT");
-    	wcsimrootgeom = new WCSimRootGeom (); 
-    	wcsimGeoT -> SetBranchAddress ("wcsimrootgeom" ,&wcsimrootgeom );
-    	
-    	wcsimGeoT->GetEntry(0) ;
-    	/*
-    	Initialise Eve
-    	*/
-    	TEveManager::Create(kTRUE,"V");
-    	gEve->GetBrowser()->SetTabTitle("3D View",TRootBrowser::kRight,0);
-    	gEve->GetDefaultViewer()->SetName("3D View");
-    	gEve->GetDefaultViewer()->GetGLViewer()->SetResetCamerasOnUpdate(kFALSE);
-    	
-    	fPicker= new Picker();
-    	gEve->GetDefaultGLViewer()->Connect("Clicked(TObject*)", "Picker", fPicker, 
-    		"Picked(TObject*)");
-    	/*
-    	Initialise the html summary tab
-    	*/
-    	gROOT->LoadMacro("hyperk_esd_html_summary.C");
-    	fgHtmlSummary = new HtmlSummary("HyperK Event Display Summary Table");
-    	slot = TEveWindow::CreateWindowInTab(gEve->GetBrowser()->GetTabRight());
-    	fgHtml = new TGHtml(0, 100, 100);
-    	TEveWindowFrame *wf = slot->MakeFrame(fgHtml);
-    	fgHtml->MapSubwindows();
-    	wf->SetElementName("Summary");
-    	/*
-    	Initialise the geometry objects
-    	*/
-    	gSystem->Load("libGeom");
-    	new TGeoManager("HyperK", "HyperK Detector");
-    	createGeometry(kTRUE);
-    	gGeoManager->SetTopVolume(SimpleVolume);
-    	gGeoManager->SetTopVisible();
-    	TGeoNode* node = gGeoManager->GetTopNode();
-    	geomRoot = new TEveGeoTopNode(gGeoManager, node);
-    	geomRoot->SetVisLevel(4);
-    	geomRoot->GetNode()->GetVolume()->SetVisibility(kFALSE);
-    	gEve->AddGlobalElement(geomRoot);   	
-    	/*
-    	Set up the event control GUI
-    	*/
-    	gEve->GetBrowser()->GetTabRight()->SetTab(1);
-    	make_gui();
-    	/*
-    	Initialise the unrolled geometry view
-    	*/
-    	gEve->GetBrowser()->GetTabRight()->SetTab(0);
-    	UnrolledScene = gEve->SpawnNewScene("Unrolled Event");
-    	flatGeometryScene = gEve->SpawnNewScene("Unrolled Geometry");
-    	UnrolledView = New2dView("Unrolled View",TGLViewer::kCameraOrthoXnOY,UnrolledScene);   	
-        flatGeometryScene->AddElement(FlatGeometry);
-    	UnrolledView->AddScene(flatGeometryScene);
-    	TEveSceneInfo* gSI= (TEveSceneInfo*) (UnrolledView->FindChild("SI - Geometry scene"));
-    	if(gSI!=NULL)gSI->Delete();
-    	UnrolledView->GetGLViewer()->Connect("Clicked(TObject*)", "Picker", fPicker,"Picked(TObject*)");
-    	
-    	
-    	/*
-    	Initialise FitQun
-    	*/
-    	if(FITQUN){
-    		fiTQun.setLimits(maxX,maxY,maxZ,minZ);
-    		fiTQun.SetWCSimGeom(wcsimrootgeom);
-    		fiTQun.maxY=maxY;
-    	}
-    	/*        
-    	get the WCSim information
-    	*/
-    	wcsimT = (TTree*)WCSimFile ->Get("wcsimT");
-    	wcsimrootEvent = new WCSimRootEvent ();
-    	wcsimT -> SetBranchAddress ("wcsimrootevent" ,&wcsimrootEvent);   	
-    	wcsimT->GetBranch("wcsimrootevent")->SetAutoDelete(kTRUE);
-    	wcsimT->GetEvent(0);
-    	cout<<" there are "<<wcsimT->GetEntries()<<" events "<<endl;
-    	/*
-    	load the first event
-    	*/
-    	load_event();
-    	/*
-    	Get Eve started
-    	*/
-    	gEve->GetDefaultGLViewer()->UpdateScene();
-    	gEve->Redraw3D(kTRUE); // Reset camera after the first event has been shown.
-    	
+	wcsimGeoT=(TTree *) WCSimFile->Get("wcsimGeoT");
+	wcsimrootgeom = new WCSimRootGeom (); 
+	wcsimGeoT -> SetBranchAddress ("wcsimrootgeom" ,&wcsimrootgeom );
+	
+	wcsimGeoT->GetEntry(0) ;
+	/*
+	Initialise Eve
+	*/
+	TEveManager::Create(kTRUE,"V");
+	gEve->GetBrowser()->SetTabTitle("3D View",TRootBrowser::kRight,0);
+	gEve->GetDefaultViewer()->SetName("3D View");
+	gEve->GetDefaultViewer()->GetGLViewer()->SetResetCamerasOnUpdate(kFALSE);
+	
+	fPicker= new Picker();
+	gEve->GetDefaultGLViewer()->Connect("Clicked(TObject*)", "Picker", fPicker, 
+		"Picked(TObject*)");
+	/*
+	Initialise the html summary tab
+	*/
+	fgHtmlSummary = new HtmlSummary("HyperK Event Display Summary Table");
+	slot = TEveWindow::CreateWindowInTab(gEve->GetBrowser()->GetTabRight());
+	fgHtml = new TGHtml(0, 100, 100);
+	TEveWindowFrame *wf = slot->MakeFrame(fgHtml);
+	fgHtml->MapSubwindows();
+	wf->SetElementName("Summary");
+	/*
+	Initialise the geometry objects
+	*/
+	gSystem->Load("libGeom");
+	new TGeoManager("HyperK", "HyperK Detector");
+	createGeometry(kTRUE);
+	gGeoManager->SetTopVolume(SimpleVolume);
+	gGeoManager->SetTopVisible();
+	TGeoNode* node = gGeoManager->GetTopNode();
+	geomRoot = new TEveGeoTopNode(gGeoManager, node);
+	geomRoot->SetVisLevel(4);
+	geomRoot->GetNode()->GetVolume()->SetVisibility(kFALSE);
+	gEve->AddGlobalElement(geomRoot);   	
+	/*
+	Set up the event control GUI
+	*/
+	gEve->GetBrowser()->GetTabRight()->SetTab(1);
+	make_gui();
+	/*
+	Initialise the unrolled geometry view
+	*/
+	gEve->GetBrowser()->GetTabRight()->SetTab(0);
+	UnrolledScene = gEve->SpawnNewScene("Unrolled Event");
+	flatGeometryScene = gEve->SpawnNewScene("Unrolled Geometry");
+	UnrolledView = New2dView("Unrolled View",TGLViewer::kCameraOrthoXnOY,UnrolledScene);   	
+	flatGeometryScene->AddElement(FlatGeometry);
+	UnrolledView->AddScene(flatGeometryScene);
+	TEveSceneInfo* gSI= (TEveSceneInfo*) (UnrolledView->FindChild("SI - Geometry scene"));
+	if(gSI!=NULL)gSI->Delete();
+	UnrolledView->GetGLViewer()->Connect("Clicked(TObject*)", "Picker", fPicker,"Picked(TObject*)");
+	
+	
+	/*
+	Initialise FitQun
+	*/
+	if(FITQUN){
+		fiTQun.setLimits(maxX,maxY,maxZ,minZ);
+		fiTQun.SetWCSimGeom(wcsimrootgeom);
+		fiTQun.maxY=maxY;
+	}
+	/*        
+	get the WCSim information
+	*/
+	wcsimT = (TTree*)WCSimFile ->Get("wcsimT");
+	wcsimrootEvent = new WCSimRootEvent ();
+	wcsimT -> SetBranchAddress ("wcsimrootevent" ,&wcsimrootEvent);   	
+	wcsimT->GetBranch("wcsimrootevent")->SetAutoDelete(kTRUE);
+	wcsimT->GetEvent(0);
+	cout<<" there are "<<wcsimT->GetEntries()<<" events "<<endl;
+	/*
+	load the first event
+	*/
+	load_event();
+	/*
+	Get Eve started
+	*/
+	gEve->GetDefaultGLViewer()->UpdateScene();
+	gEve->Redraw3D(kTRUE); // Reset camera after the first event has been shown.
+	
 }
-
+void CartesianToPolar(double &mom,double &theta,double &phi,double p[3]){
+	mom=sqrt(p[0]*p[0]+p[1]*p[1]+p[2]*p[2]);
+	theta=acos(p[2]/mom);
+	phi=atan2(p[1],p[0]);
+}
 //______________________________________________________________________________
 
 //______________________________________________________________________________
@@ -669,7 +682,7 @@ wcsim_load_truth_tracks(int iTrigger,bool &firstTrackIsNeutrino,bool &secondTrac
 				PT[0]=wcsimroottrack->GetP()*wcsimroottrack->GetPdir(0);
 				PT[1]=wcsimroottrack->GetP()*wcsimroottrack->GetPdir(1);
 				PT[2]=wcsimroottrack->GetP()*wcsimroottrack->GetPdir(2);
-				fitQunDisplay::CartesianToPolar(PTtot,Theta,Phi,PT);
+				CartesianToPolar(PTtot,Theta,Phi,PT);
 			}
 			track->SetValues(Start,Stop,Mass,Momentum,Energy,Theta,Phi);
 			
@@ -997,7 +1010,7 @@ void update_html_summary(int iTrigger,WCSimRootTrigger * wcsimrootTrigger,bool f
 			PT[0]=wcsimroottrack->GetP()*wcsimroottrack->GetPdir(0);
 			PT[1]=wcsimroottrack->GetP()*wcsimroottrack->GetPdir(1);
 			PT[2]=wcsimroottrack->GetP()*wcsimroottrack->GetPdir(2);
-			fitQunDisplay::CartesianToPolar(PTtot,Theta,Phi,PT);
+			CartesianToPolar(PTtot,Theta,Phi,PT);
 		}
 		table->SetValue(10,used,Theta);
 		table->SetValue(11,used,Phi);
