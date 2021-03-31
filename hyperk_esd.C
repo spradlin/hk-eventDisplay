@@ -23,7 +23,9 @@ bool FITQUN,fAccumulateEvents,fDigitIsTime;
 void       make_gui();
 void       load_event();
 void       createGeometry(bool flatTube=kFALSE);
-void       wcsim_load_event(int iTrigger);
+void       wcsim_load_event(int, bool &, bool &);
+void       wcsim_load_cherenkov(int);
+void       wcsim_load_truth_tracks(int, bool &, bool &);
 void       fitqun_load_event(int entry);
 void       UnrollView(double* pmtX ,double* pmtY,double* pmtZ,int location,float maxY,float maxZ);
 TEveViewer* New2dView(TString name,TGLViewer::ECameraType type, TEveScene* scene);
@@ -138,7 +140,7 @@ void hyperk_esd()
 	Initialise the html summary tab
 	*/
 	fgHtmlSummary = new HtmlSummary("HyperK Event Display Summary Table");
-	slot = TEveWindow::CreateWindowInTab(gEve->GetBrowser()->GetTabRight());
+	auto slot = TEveWindow::CreateWindowInTab(gEve->GetBrowser()->GetTabRight());
 	fgHtml = new TGHtml(0, 100, 100);
 	TEveWindowFrame *wf = slot->MakeFrame(fgHtml);
 	fgHtml->MapSubwindows();
@@ -361,11 +363,11 @@ void make_gui()
 	{
 		Group = new TGGroupFrame(fCanvasWindow->GetContainer(),"Event Navigation");
 		TGHorizontalFrame* hf = new TGHorizontalFrame(Group);
+		EvNavHandler      *fh = new EvNavHandler;
 		{
 			
 			TString icondir( Form("%s/icons/", gSystem->Getenv("ROOTSYS")) );
 			TGPictureButton* b = 0;
-			EvNavHandler    *fh = new EvNavHandler;
 			
 			b = new TGPictureButton(hf, gClient->GetPicture(icondir+"GoBack.gif"));
 			hf->AddFrame(b);
@@ -467,7 +469,7 @@ void wcsim_load_event(int iTrigger,bool &firstTrackIsNeutrino,bool &secondTrackI
 /*
 Loop over cherenkov digits and add them to Eve
 */
-wcsim_load_cherenkov(int iTrigger){
+void wcsim_load_cherenkov(int iTrigger){
 	/*
 	Loop over all cherenkov hits and add them to Eve event
 	*/
@@ -563,7 +565,7 @@ wcsim_load_cherenkov(int iTrigger){
 /*
 Loop over truth tracks and add them to Eve
 */
-wcsim_load_truth_tracks(int iTrigger,bool &firstTrackIsNeutrino,bool &secondTrackIsTarget)
+void wcsim_load_truth_tracks(int iTrigger,bool &firstTrackIsNeutrino,bool &secondTrackIsTarget)
 {
 	// Get the number of tracks
 	int ntrack = wcsimrootTrigger->GetNtrack();
@@ -583,7 +585,7 @@ wcsim_load_truth_tracks(int iTrigger,bool &firstTrackIsNeutrino,bool &secondTrac
 			TObject *element = (wcsimrootTrigger->GetTracks())->At(0);
 			WCSimRootTrack *wcsimroottrack = dynamic_cast<WCSimRootTrack*>(element);
 			int pdgCode=wcsimroottrack->GetIpnu();
-			if(abs(pdgCode)==12 || abs(pdgCode==14))
+			if(abs(pdgCode)==12 || abs(pdgCode)==14)
 				firstTrackIsNeutrino=kTRUE;
 			if(ntrack>1)
 			{
@@ -739,7 +741,7 @@ void createGeometry(bool flatTube)
 	par[5]  = 0.000000; // deemax
 	par[6]  = 0.000000; // epsil
 	par[7]  = 0.000000; // stmin
-	pMed1 = new TGeoMedium("medium0", numed,pMat1, par);
+	auto pMed1 = new TGeoMedium("medium0", numed,pMat1, par);
 	
 	
 	float dx = 2*maxX;
@@ -791,11 +793,11 @@ void createGeometry(bool flatTube)
 	TGeoShape *PhotoTubeShape   = new TGeoTube("phototube",0.0,rmax,zSize);  
 	TGeoShape *PhotoSphereShape = new TGeoSphere("photosphere",rmin,rmax,theta1, theta2,phi1,phi2);
 	// Volume: phototube
-	PhotoTubeVolume = new TGeoVolume("phototube",PhotoTubeShape, pMed1);
+	auto PhotoTubeVolume = new TGeoVolume("phototube",PhotoTubeShape, pMed1);
 	PhotoTubeVolume->SetVisLeaves(kTRUE);
 	PhotoTubeVolume->SetLineColor(kYellow-5);
 	
-	PhotoSphereVolume = new TGeoVolume("photosphere",PhotoSphereShape, pMed1);
+	auto PhotoSphereVolume = new TGeoVolume("photosphere",PhotoSphereShape, pMed1);
 	PhotoSphereVolume->SetVisLeaves(kTRUE);
 	PhotoSphereVolume->SetLineColor(kYellow-5);
 	TGeoRotation rota("rot",10,20,30);
@@ -851,7 +853,7 @@ void createGeometry(bool flatTube)
 			/* create a fake geometry object out of tevegeoshapes for the rolled out view*/
 			//cout<<" create translation using "<<pmtX2<<" "<<pmtY2<<" "<<pmtZ2<<endl;
 			TGeoTranslation PhototubeUnrolledPositionMatrix("ExlodedShift",pmtX2,pmtY2,pmtZ2);
-			shape = new TEveGeoShape(Form("Phototube %i",tubeId));
+			auto shape = new TEveGeoShape(Form("Phototube %i",tubeId));
 			shape->SetShape(PhotoTubeShape);
 			shape->SetTransMatrix(PhototubeUnrolledPositionMatrix);
 			shape->SetMainColor(kYellow-5);
